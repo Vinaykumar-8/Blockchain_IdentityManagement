@@ -11,8 +11,8 @@ const dbPath = "./tmp/badger"
 const lastHashKey = "l"
 
 type Blockchain struct {
-	Tip []byte 
-	Database  *badger.DB
+	Tip []byte
+	Database *badger.DB
 }
 
 func (bc *Blockchain) AddBlock(data string) {
@@ -29,36 +29,43 @@ func (bc *Blockchain) AddBlock(data string) {
 		})
 		return err
 	})
-	if err != nil {
-		log.Panic(err)
-	}
+	if err != nil { log.Panic(err) }
 
 	newBlock := NewBlock(data, lastHash)
-    fmt.Printf("Adding new block with data: %s\n", data)
 
 	err = bc.Database.Update(func(txn *badger.Txn) error {
 		err := txn.Set(newBlock.Hash, newBlock.Serialize())
-		if err != nil {
-			return err
-		}
+		if err != nil { return err }
 		err = txn.Set([]byte(lastHashKey), newBlock.Hash)
 		bc.Tip = newBlock.Hash
 		return err
 	})
-	if err != nil {
-		log.Panic(err)
-	}
+	if err != nil { log.Panic(err) }
 }
 
-func VerifySignature(publicKeyBytes []byte, data []byte, signature []byte) bool {
-	r := new(big.Int).SetBytes(signature[:len(signature)/2])
-	s := new(big.Int).SetBytes(signature[len(signature)/2:])
+func InitBlockchain() *Blockchain {
+	var tip []byte
+	opts := badger.DefaultOptions(dbPath)
+	db, err := badger.Open(opts)
+	if err != nil { log.Panic(err) }
 
-	curve := elliptic.P256()
-	x := new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2])
-	y := new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:])
-	rawPubKey := ecdsa.PublicKey{Curve: curve, X: x, Y: y}
+	err = db.Update(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(lastHashKey))
+		if err == badger.ErrKeyNotFound {
+			fmt.Println("No existing blockchain found. Creating Genesis...")
+			genesis := NewGenesisBlock()
+			err = txn.Set(genesis.Hash, genesis.Serialize())
+			err = txn.Set([]byte(lastHashKey), genesis.Hash)
+			tip = genesis.Hash
+		} else {
+			err = item.Value(func(val []byte) error {
+				tip = val
+				return nil
+			})
+		}
+		return err
+	})
+	if err != nil { log.Panic(err) }
 
-	hash := sha256.Sum256(data)
-	return ecdsa.Verify(&rawPubKey, hash[:], r, s)
+	return &Blockchain{tip, db}
 }
