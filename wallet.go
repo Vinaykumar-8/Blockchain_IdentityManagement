@@ -1,14 +1,30 @@
-func VerifySignature(publicKeyBytes []byte, data []byte, signature []byte) bool {
+package main
 
-	r := new(big.Int).SetBytes(signature[:len(signature)/2])
-	s := new(big.Int).SetBytes(signature[len(signature)/2:])
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"log"
+)
 
+type Wallet struct {
+	PrivateKey ecdsa.PrivateKey
+	PublicKey  []byte
+}
+
+func NewWallet() *Wallet {
+	private, public := GenerateKeyPair()
+	wallet := Wallet{*private, public}
+	return &wallet
+}
+
+func GenerateKeyPair() (*ecdsa.PrivateKey, []byte) {
 	curve := elliptic.P256()
-	x := new(big.Int).SetBytes(publicKeyBytes[:len(publicKeyBytes)/2])
-	y := new(big.Int).SetBytes(publicKeyBytes[len(publicKeyBytes)/2:])
-	rawPubKey := ecdsa.PublicKey{Curve: curve, X: x, Y: y}
-
-	hash := sha256.Sum256(data)
-
-	return ecdsa.Verify(&rawPubKey, hash[:], r, s)
+	private, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		log.Panic(err)
+	}
+	// Combine X and Y coordinates to create a single byte slice public key
+	public := append(private.PublicKey.X.Bytes(), private.PublicKey.Y.Bytes()...)
+	return private, public
 }
